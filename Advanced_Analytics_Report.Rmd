@@ -1,0 +1,285 @@
+---
+title: "Advanced Analytics Project"
+author: "Prajwal Bharti"
+output: html_document
+---
+
+# Introduction
+
+This project applies classification and regression techniques to two real-world datasets. 
+- The first dataset focuses on detecting the presence of heart disease using classification models (Decision Tree and k-Nearest Neighbors).
+- The second predicts student academic performance using Multiple Linear Regression. 
+- The goal is to build, evaluate, and compare models, and to interpret their performance and insights gained.
+
+---
+
+# Dataset 1: Heart Disease (Classification)
+
+## Dataset Description
+
+I have sourced this dataset from the UCI Cleveland Heart Disease dataset. 
+It includes 13 predictors such as age, sex, chest pain type, blood pressure, cholesterol, and more. The target variable indicates the presence (`Yes`) or absence (`No`) of heart disease.
+
+```{r}
+heart <- read.csv("processed.cleveland.data", header = FALSE)
+colnames(heart) <- c("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
+                     "thalach", "exang", "oldpeak", "slope", "ca", "thal", "target")
+
+heart$target <- ifelse(heart$target == 0, "No", "Yes")
+heart$target <- as.factor(heart$target)
+```
+
+In this dataset the target data was a categorical variable and decision tree requires target variable as a factor of 0 and 1 for prediction so we convert it into factor of 0 and 1
+
+
+
+## Exploratory Data Analysis
+
+```{r}
+library(ggplot2)
+library(caret)
+
+summary(heart)
+
+ggplot(heart, aes(x = target)) +
+  geom_bar(fill = "skyblue") +
+  labs(title = "Heart Disease Distribution", x = "Heart Disease", y = "Count")
+```
+
+The target variable is moderately imbalanced, with slightly more individuals not having heart disease. This could affect the performance of the classifier models.
+
+```{r}
+#shows age distribution of heart disease patients 
+ggplot(heart, aes(x = age, fill = target)) +
+  geom_histogram(binwidth = 5, position = "dodge") +
+  labs(title = "Age Distribution by Heart Disease", x = "Age", y = "Count")
+```
+The risk of heart disease increases with age, particularly in individuals aged 65 and older. This trend tells that age as a significant risk factor for heart disease. 
+
+```{r}
+#shows age distribution of heart disease patients 
+ggplot(heart, aes(x = age, y = chol, color = target)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Cholestrol Vs Age", x = "Age",y = "Cholestrol")
+```
+This graph tells patients between the age 50 and 70 have high cholestrol which is leading to have the heart disease
+
+```{r}
+#shows age distribution of heart disease patients 
+ggplot(heart, aes(x = target, y = thalach, fill = target)) +
+  geom_boxplot() +
+  labs(title = "Max Heart Rate vs Heart Disease", x = "Heart Disease", y = "Max Heart Rate")
+```
+This box plot compares maximum heart rate achieved during exercise stress tests between patients with and without heart disease.
+The patients with heart disease has low heart rate and viceversa for the patients with no heart disease
+
+---
+
+# Decision Tree Classification
+
+## Train-Test Split
+
+```{r}
+set.seed(123)
+split <- createDataPartition(heart$target, p = 0.8, list = FALSE)
+train <- heart[split, ]
+test <- heart[-split, ]
+```
+
+So here we have set the seed to 123 for higher reproducibility, so whenever we use this code again the split should take the same data everytime so the model do not change everytime
+Further, we split the data training data into 80% and testing data into 20%
+
+## Model Training and Visualization
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+tree_model <- rpart(target ~ ., data = train, method = "class")
+rpart.plot(tree_model)
+```
+
+## Evaluation
+
+```{r}
+tree_pred <- predict(tree_model, test, type = "class")
+confusionMatrix(tree_pred, test$target)
+```
+
+The decision tree model achieved 81% accuracy with balanced sensitivity and specificity, indicating good generalization on unseen data.
+
+---
+
+# k-Nearest Neighbors Classification
+
+## Data Normalization
+
+```{r}
+library(class)  
+normalize <- function(x) {(x - min(x)) / (max(x) - min(x))}
+heart_features <- heart[, -which(names(heart) == "target")]
+heart_numeric <- heart_features[, sapply(heart_features, is.numeric)]
+heart_norm <- as.data.frame(lapply(heart_numeric, normalize))
+heart_norm$target <- heart$target
+```
+
+So here we normalize data in between 0 and 1 excluding the target because we have to predict it for the test data. The normalization is done because KNN is sensitive to scale
+
+## Train-Test Split
+
+```{r}
+set.seed(123)
+split <- createDataPartition(heart_norm$target, p = 0.8, list = FALSE)
+knn_train <- heart_norm[split, ]
+knn_test <- heart_norm[-split, ]
+```
+
+Here we are spitting the data 
+80% Training data and rest for testing
+
+## Model Tuning and Evaluation
+
+```{r}
+knn_pred3 <- knn(train = knn_train[, -ncol(knn_train)],
+                 test = knn_test[, -ncol(knn_test)],
+                 cl = knn_train$target,
+                 k = 3)
+
+knn_pred5 <- knn(train = knn_train[, -ncol(knn_train)],
+                 test = knn_test[, -ncol(knn_test)],
+                 cl = knn_train$target,
+                 k = 5)
+
+knn_pred7 <- knn(train = knn_train[, -ncol(knn_train)],
+                 test = knn_test[, -ncol(knn_test)],
+                 cl = knn_train$target,
+                 k = 7)
+
+# Comparing the knn prediction with actual target column
+confusionMatrix(knn_pred3, knn_test$target)
+confusionMatrix(knn_pred5, knn_test$target)
+confusionMatrix(knn_pred7, knn_test$target)
+```
+
+The kNN model with `k = 5` provided the best performance, matching the decision tree with an accuracy of 81.4%. Sensitivity was slightly higher, indicating better prediction of healthy patients.
+
+---
+
+# Dataset 2: Student Performance (Regression)
+
+## Dataset Description
+
+This dataset includes various demographic and academic factors for students in a math course. The target variable is the final grade (`G3`). Predictors include first and second period grades (`G1`, `G2`), study time, and more.
+
+```{r}
+library('dplyr')
+student <- read.csv("student-mat.csv", sep = ";")
+student <- student %>% mutate_if(is.character, as.factor)
+summary(student)
+```
+
+## Correlation Analysis
+
+```{r}
+cor_student <- cor(student[sapply(student, is.numeric)])
+print(cor_student)
+```
+
+G1 and G2 show high correlation with G3, as expected. These are key predictors for the regression model.
+
+---
+
+# Multiple Linear Regression
+
+## Full Model
+
+```{r}
+student.lm <- lm(G3 ~ G1 + G2 + studytime, data = student)
+summary(student.lm)
+```
+
+G1 and G2 were statistically significant predictors with p-values < 0.001. Adjusted R-squared was ~0.82, indicating a strong model fit.
+
+---
+
+## Predictions
+
+```{r}
+new_student <- data.frame(G1 = 13, G2 = 16, studytime = 3)
+predict(student.lm, new_student)
+predict(student.lm, new_student, interval = "confidence")
+predict(student.lm, new_student, interval = "predict")
+```
+
+The predicted final grade for a student with G1=14, G2=15, and studytime=3 was approximately 15.6, with confidence and prediction intervals provided.
+
+
+
+## Exploratory Data Analysis
+
+```{r}
+
+# G1(Grade 1) vs G3(Grade 1)
+plot(G3 ~ G1, data = student, main = "G1 vs Final Grade (G3)",
+     xlab = "First Sem Grade (G1)", ylab = "Final Grade")
+abline(lm(G3 ~ G1, data = student), col = "blue")
+```
+This graph illustrates a strong trend that indicates that student who has good G1(Grade1) he also has good final grades. This confirms strong relation G1(Grade1) and Final Grade
+
+
+
+```{r}
+
+# G2(Grade 1) vs G3(Grade 1)
+plot(G3 ~ G2, data = student, main = "G2 vs Final Grade (G3)",
+     xlab = "Second Sem Grade (G2)", ylab = "Final Grade")
+abline(lm(G3 ~ G2, data = student), col = "green")
+```
+The scatter plot illustrates the relationship between students' second-period grades (G2) and their final grades (G3). A strong positive correlation is evident, indicating that students who perform well in the second period tend to maintain high performance through to the final period.
+
+
+
+
+## Model Evaluation
+
+```{r}
+predicted_g3 <- predict(student.lm)
+actual_g3 <- student$G3
+rmse <- sqrt(mean((predicted_g3 - actual_g3)^2))
+cat("RMSE:", rmse)
+```
+
+The Root Mean Squared Error (RMSE) indicates a good level of accuracy in grade prediction.
+
+---
+
+## Reduced Model Comparison
+
+```{r}
+student.lm2 <- lm(G3 ~ G1 + studytime, data = student)
+summary(student.lm2)
+
+summary(student.lm)$r.squared
+summary(student.lm2)$r.squared
+```
+
+Excluding G2 reduced the R-squared, confirming G2 is an important predictor.
+
+---
+
+# Reflection
+
+In this project I have applied both classification and regression modeling using R. I have gained experience in working with real-world datasets, cleaning and transforming the data, visualizing data and interpreting model outputs
+
+In classification model,
+both decision tree and KNN performed equally good with accuracies above 81%. However, KNN showed slightly better stats with slight high sensitivity.
+In regression model,
+G1(Grade1) and G2(Grade2) were the strongest predictors, and the model achieved high accuracy with low RMSE.
+
+One of the most valuable aspects of this project was understanding the need for proper preprocessing. By using kNN, I learned how essential normalization is when dealing with distance-based algorithms. At first, I encountered errors trying to normalize all columns, but then realized I had to apply normalization only to numeric features, excluding factors and characters. This helped me develop a better understanding of how data types affect model readiness.
+
+In the regression section, I built a multiple linear regression model to predict final grades G3(Grade3) based on G1(Grade1), G2(Grade2), and study time. G1(Grade1) and G2(Grade2) were the strong predictors with significant p-values, and the model achieved an adjusted R-squared of ~0.82 and low RMSE. This made me understand of how past performance strongly impacts future academic outcomes. In last I also compared a reduced model by excluding the G2(Grade2) and noticed a drop in R-squared, confirming its importance.
+
+One technical challenge I faced was selecting which predictors to keep. Including too many variables could lead to overfitting, but excluding important ones could weaken the model. Balancing this taught me the importance of model simplification and evaluation through metrics like RMSE and adjusted R-squared.
+
+Overall, this project deepened my understanding of how Decision tree, KNN and Regression works. How the data modeling is done. how to deal with the real world data. It also improved my coding fluency in R, especially with libraries like `caret`, `class`, and `rpart`. More importantly, it taught me how to how to analyse the outcome i.e how to summarize it and come to the conclusion that which one is better. I now feel more confident approaching similar analytics tasks in future projects or real-world scenarios.  
